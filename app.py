@@ -29,13 +29,16 @@ HTML_TEMPLATE = """
 
   {% if items %}
   <div class="results">
-    <h2>Cart Items</h2>
+    <h2>Individual Items</h2>
     <ul>
       {% for item in items %}
-      <li>{{ item.title }} x {{ item.quantity }}</li>
+      <li>
+        {{ item.title }} x {{ item.quantity }}
+        – <a href="{{ item.link }}" target="_blank">Open</a>
+      </li>
       {% endfor %}
     </ul>
-    <p><strong>Final Cart Link:</strong> <a href="{{ cart_url }}" target="_blank">Open Cart</a></p>
+    <p><strong>Combined Cart Link:</strong> <a href="{{ cart_url }}" target="_blank">Open All</a></p>
   </div>
   {% endif %}
 
@@ -87,25 +90,39 @@ def index():
                     base_title = data.get("title", "Unnamed Product").strip()
 
                     if variant_id:
+                        # Add to global cart
                         domain_variants[domain].append(f"{variant_id}:1")
+
+                        # Create individual cart URL
+                        item_cart_link = f"{domain}/cart/{variant_id}:1"
                         display_title = (
                             f"{base_title} ({variant_title})" if variant_title and variant_title != "Default Title" else base_title
                         )
-                        items.append({"title": display_title, "quantity": 1})
+                        items.append({
+                            "title": display_title,
+                            "quantity": 1,
+                            "link": item_cart_link
+                        })
 
             except Exception as e:
                 errors.append(f"{url} - ❌ Error: {e}")
 
-        # One combined cart link per domain (currently supports one domain)
+        # Generate full cart link for the first domain only
         for domain, variants in domain_variants.items():
             cart_url = f"{domain}/cart/" + ",".join(variants)
             try:
                 webbrowser.open(cart_url)
             except:
                 errors.append(f"Could not open browser for {cart_url}")
-            break  # Only show one cart link (first domain)
+            break  # Only one domain supported at a time
 
-    return render_template_string(HTML_TEMPLATE, items=items, cart_url=cart_url, errors=errors, default_urls=default_urls)
+    return render_template_string(
+        HTML_TEMPLATE,
+        items=items,
+        cart_url=cart_url,
+        errors=errors,
+        default_urls=default_urls
+    )
 
 if __name__ == "__main__":
     app.run(debug=False)
