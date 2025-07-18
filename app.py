@@ -3,7 +3,6 @@ import requests
 import re
 from collections import defaultdict
 import webbrowser
-from waitress import serve
 
 app = Flask(__name__)
 
@@ -28,11 +27,11 @@ HTML_TEMPLATE = """
     <button type="submit">Generate Cart Links</button>
   </form>
 
-  {% if links %}
+  {% if items %}
   <div class="results">
     <h2>Cart Items</h2>
     <ul>
-      {% for item in links %}
+      {% for item in items %}
       <li>{{ item.title }} x {{ item.quantity }}</li>
       {% endfor %}
     </ul>
@@ -56,17 +55,16 @@ HTML_TEMPLATE = """
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    links = []
-    errors = []
     default_urls = ""
+    items = []
+    errors = []
+    domain_variants = defaultdict(list)
     cart_url = ""
 
     if request.method == "POST":
         urls_input = request.form.get("urls", "")
         default_urls = urls_input
         urls = [url.strip() for url in urls_input.split(",") if url.strip()]
-        domain_variants = defaultdict(list)
-        display_items = []
 
         for url in urls:
             match = re.search(r'/products/([^/?]+)', url)
@@ -85,26 +83,29 @@ def index():
 
                 for variant in data.get("variants", []):
                     variant_id = variant.get("id")
-                    variant_title = variant.get("title")
+                    variant_title = variant.get("title", "").strip()
+                    base_title = data.get("title", "Unnamed Product").strip()
+
                     if variant_id:
                         domain_variants[domain].append(f"{variant_id}:1")
-                        display_items.append({
-                            "title": f"{data.get('title')} ({variant_title})" if variant_title and variant_title != "Default Title" else data.get('title'),
-                            "quantity": 1
-                        })
+                        display_title = (
+                            f"{base_title} ({variant_title})" if variant_title and variant_title != "Default Title" else base_title
+                        )
+                        items.append({"title": display_title, "quantity": 1})
 
             except Exception as e:
                 errors.append(f"{url} - ❌ Error: {e}")
 
-        for domain, variant_chunks in domain_variants.items():
-            if variant_chunks:
-                cart_url = f"{domain}/cart/" + ",".join(variant_chunks)
-                try:
-                    webbrowser.open(cart_url)
-                except:
-                    errors.append(f"Could not open browser for {cart_url}")
+        # One combined cart link per domain (currently supports one domain)
+        for domain, variants in domain_variants.items():
+            cart_url = f"{domain}/cart/" + ",".join(variants)
+            try:
+                webbrowser.open(cart_url)
+            except:
+                errors.append(f"Could not open browser for {cart_url}")
+            break  # Only show one cart link (first domain)
 
-    return render_template_string(HTML_TEMPLATE, links=display_items, errors=errors, default_urls=default_urls, cart_url=cart_url)
+    return render_template_string(HTML_TEMPLATE, items=items, cart_url=cart_url, errors=errors, default_urls=default_urls)
 
 if __name__ == "__main__":
-    serve(app, host="0.0.0.0", port=8000)
+    app.run(debug=False)
